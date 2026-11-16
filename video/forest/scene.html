@@ -138,8 +138,8 @@ function forestPanel(t, dark, o = {}) {
   ctx.beginPath(); let first = true; let lastPt = [hx, hy];
   for (let i = 0; i <= 100 * trackK; i++) { const k = i / 100, px = lerp(hx + 70, x0 + w - 180, k), py = hy + 20 - Math.sin(k * 6) * 6; if (k < erase) { first = true; continue; } if (first) { ctx.moveTo(px, py); first = false; } else ctx.lineTo(px, py); lastPt = [px, py]; }
   ctx.stroke(); ctx.setLineDash([]);
-  if (o.walker !== false) { const [px, py] = o.walkerPos || lastPt; ctx.fillStyle = YEL; circle(px, py - 4, 13); ctx.fill(); glow(px, py, 50, "242,193,78", 0.5); }
-  if (o.q) txt("?", (o.walkerPos || lastPt)[0], (o.walkerPos || lastPt)[1] - 80, 70, RED);
+  if (o.walker !== false) { const [px, py] = o.walkerPos || lastPt; glow(px, py - 50, 90, "242,193,78", 0.18); skier(ctx, px, py, 1.15, t, o.moving !== false); }
+  if (o.q) txt("?", (o.walkerPos || lastPt)[0], (o.walkerPos || lastPt)[1] - 190, 70, RED);
   snowfall(t, o.snow || 60, 0.55, 140);
   ctx.restore();
   ctx.strokeStyle = LINE; ctx.lineWidth = 3; rr(x0, y0, w, h, 26); ctx.stroke();
@@ -187,7 +187,7 @@ function scLeave(t) {
 function scDark(t) {
   base();
   const k = inv(11.94, 15.0, t);
-  forestPanel(t, lerp(0.2, 1, k), { track: 0.7, erase: inv(13.18, 14.3, t) * 0.95, snow: lerp(60, 160, k), houseLit: 1 - inv(14.44, 15.2, t), q: t > 14.8 });
+  forestPanel(t, lerp(0.2, 1, k), { moving: false, track: 0.7, erase: inv(13.18, 14.3, t) * 0.95, snow: lerp(60, 160, k), houseLit: 1 - inv(14.44, 15.2, t), q: t > 14.8 });
   if (t > 12.0 && t < 13.2) { ctx.save(); ctx.globalAlpha = easeOut(inv(12.0, 12.3, t)); panelBox(380, 380, 320, 120); txt("16:00", 540, 440, 58, WHITE); ctx.restore(); }
   vignette(0.7);
 }
