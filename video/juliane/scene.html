@@ -1,0 +1,665 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "M"; font-weight: 900; src: url(fonts/montserrat-cyrillic-900-normal.woff2) format("woff2"); unicode-range: U+0400-04FF; }
+@font-face { font-family: "M"; font-weight: 900; src: url(fonts/montserrat-latin-900-normal.woff2) format("woff2"); }
+@font-face { font-family: "M"; font-weight: 800; src: url(fonts/montserrat-cyrillic-800-normal.woff2) format("woff2"); unicode-range: U+0400-04FF; }
+@font-face { font-family: "M"; font-weight: 800; src: url(fonts/montserrat-latin-800-normal.woff2) format("woff2"); }
+html, body { margin: 0; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script src="timing.js"></script>
+<script>
+const W = 1080, H = 1920;
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+
+// ---------- утилиты ----------
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const inv = (a, b, v) => clamp((v - a) / (b - a));
+const ease = (k) => k * k * (3 - 2 * k);
+const easeOut = (k) => 1 - Math.pow(1 - k, 3);
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+function ell(c, x, y, rx, ry, col) { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); c.fillStyle = col; c.fill(); }
+function glow(c, x, y, r, col, a) {
+  const g = c.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, col.replace("A", a)); g.addColorStop(1, col.replace("A", 0));
+  c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
+}
+function vgrad(c, y0, y1, stops) { const g = c.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, col]) => g.addColorStop(o, col)); return g; }
+function vignette(c, k = 0.55) {
+  const g = c.createRadialGradient(W / 2, H * 0.45, H * 0.25, W / 2, H * 0.5, H * 0.75);
+  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${k})`);
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+}
+function off(w, h, fn) { const o = document.createElement("canvas"); o.width = w; o.height = h; fn(o.getContext("2d"), w, h); return o; }
+
+// ---------- палитра ----------
+const SKIN = "#f4c8a8", SKIN_SH = "#e2ad8c", BLUSH = "rgba(240,120,130,0.45)";
+const JUL = { hair: "#d9b36a", hairSh: "#b98f48", top: "#8fc6e8", topSh: "#6aa6cc", dress: true, eyes: "open" };
+const MOM = { hair: "#3a2a22", hairSh: "#2a1d17", top: "#4f7d5c", topSh: "#3e6649", bun: true, eyes: "open" };
+const DAD = { hair: "#5a4632", hairSh: "#45352a", top: "#b59a6a", topSh: "#9c8355", beard: true, glasses: true, short: true, eyes: "open" };
+const CUTTER = { hair: "#1e1a18", hairSh: "#141110", top: "#c45a3a", topSh: "#a5482d", short: true, eyes: "open", hat: "#6b5a3a" };
+const CUTTER2 = { hair: "#2a2220", hairSh: "#1a1514", top: "#3d6f8f", topSh: "#2f5a75", short: true, eyes: "open", skin: "#c99572" };
+
+// ---------- персонаж (плоский, без обводки) ----------
+// x,y = точка между ступнями, s = масштаб (1 = рост ~ 650 px)
+function person(c, x, y, s, o, pose = {}) {
+  const skin = o.skin || SKIN;
+  c.save(); c.translate(x, y); c.scale(s, s);
+  const bob = pose.bob || 0;
+  c.translate(0, bob);
+  // ноги
+  if (!pose.noLegs) {
+    const legCol = o.dress ? skin : "#23263b";
+    const sw = pose.walk ? Math.sin(pose.walk) * 22 : 0;
+    c.fillStyle = legCol;
+    rr(c, -40 + sw, -175, 30, 170, 14); c.fill();
+    rr(c, 10 - sw, -175, 30, 170, 14); c.fill();
+    ell(c, -30 + sw, -8, 40, 16, pose.oneShoe ? "#e9e2d6" : "#f1f1f1");
+    if (!pose.oneShoe) ell(c, 30 - sw, -8, 40, 16, "#f1f1f1"); else ell(c, 30 - sw, -8, 28, 12, skin);
+  }
+  // волосы сзади
+  if (!o.short) {
+    c.fillStyle = o.hairSh;
+    if (pose.hairUp) {
+      const L = 150 + Math.sin(pose.hairUp * 7) * 25;
+      c.beginPath(); c.moveTo(-104, -560);
+      c.bezierCurveTo(-150, -650 - L * 0.6, -60 + Math.sin(pose.hairUp * 9) * 20, -640 - L, 10, -650 - L);
+      c.bezierCurveTo(80 + Math.sin(pose.hairUp * 8) * 20, -640 - L, 150, -650 - L * 0.5, 104, -560); c.closePath(); c.fill();
+    } else { rr(c, -112, -650, 224, 300, 100); c.fill(); }
+  }
+  // тело
+  const top = o.top, topSh = o.topSh;
+  c.fillStyle = top;
+  c.beginPath();
+  if (o.dress) {
+    c.moveTo(-88, -405); c.lineTo(88, -405); c.lineTo(132, -150); c.quadraticCurveTo(0, -128, -132, -150); c.closePath();
+  } else {
+    c.moveTo(-95, -405); c.lineTo(95, -405); c.lineTo(108, -165); c.quadraticCurveTo(0, -150, -108, -165); c.closePath();
+  }
+  c.fill();
+  c.fillStyle = topSh; c.globalAlpha = 0.5;
+  if (!o.dress) { rr(c, -55, -255, 110, 60, 14); c.fill(); }
+  c.globalAlpha = 1;
+  // руки
+  const la = pose.armL || 0, ra = pose.armR || 0;
+  for (const [sx, a] of [[-1, la], [1, ra]]) {
+    c.save(); c.translate(sx * 92, -392); c.rotate(-sx * a);
+    c.fillStyle = o.dress ? skin : top; rr(c, -24, 0, 48, 190, 24); c.fill();
+    if (pose.cuts && sx === 1) {
+      c.strokeStyle = "#b8323a"; c.lineWidth = 7; c.lineCap = "round";
+      for (const [y0, dx] of [[40, 14], [75, -10], [112, 12]]) { c.beginPath(); c.moveTo(-14, y0); c.lineTo(14, y0 + dx * 0.6); c.stroke(); }
+    }
+    ell(c, 0, 200, 28, 28, skin);
+    c.restore();
+  }
+  // шея и голова
+  c.fillStyle = skin; rr(c, -24, -440, 48, 50, 10); c.fill();
+  ell(c, 0, -530, 98, 110, skin);
+  // волосы спереди
+  c.fillStyle = o.hair;
+  c.beginPath(); c.ellipse(0, -585, 104, 72, 0, Math.PI, 0); c.fill();
+  if (!o.short && !pose.hairUp) { rr(c, -108, -600, 40, 170, 20); c.fill(); rr(c, 68, -600, 40, 170, 20); c.fill(); }
+  if (o.bun) ell(c, 0, -665, 46, 40, o.hair);
+  if (o.hat) { c.fillStyle = o.hat; c.beginPath(); c.ellipse(0, -600, 150, 26, 0, 0, Math.PI * 2); c.fill(); rr(c, -82, -690, 164, 95, 40); c.fill(); }
+  // лицо
+  const ey = -525, eyes = pose.eyes || o.eyes;
+  c.fillStyle = "#2a1f24";
+  if (eyes === "closed") {
+    c.strokeStyle = "#2a1f24"; c.lineWidth = 6; c.lineCap = "round";
+    for (const sx of [-1, 1]) { c.beginPath(); c.arc(sx * 38, ey - 4, 16, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
+  } else {
+    const big = eyes === "wide" ? 1.35 : 1;
+    for (const sx of [-1, 1]) {
+      ell(c, sx * 38, ey, 21 * big, 22 * big, "#fff");
+      ell(c, sx * 38 + (pose.look || 0) * 6, ey + 2, 10 * big, 10 * big, "#1d1a22");
+      if (pose.tired) { c.fillStyle = SKIN_SH; c.fillRect(sx * 38 - 24, ey - 26, 48, 20); }
+    }
+  }
+  if (pose.brows) {
+    c.strokeStyle = o.hairSh; c.lineWidth = 8; c.lineCap = "round";
+    for (const sx of [-1, 1]) { c.beginPath(); c.moveTo(sx * 22, ey - 34 - (pose.brows > 0 ? 6 : 0)); c.lineTo(sx * 56, ey - 38 + pose.brows * 6); c.stroke(); }
+  }
+  if (o.glasses) {
+    c.strokeStyle = "#2b2b33"; c.lineWidth = 6;
+    for (const sx of [-1, 1]) { c.beginPath(); c.arc(sx * 38, ey, 30, 0, Math.PI * 2); c.stroke(); }
+    c.beginPath(); c.moveTo(-8, ey); c.lineTo(8, ey); c.stroke();
+  }
+  ell(c, -62, -480, 20, 12, BLUSH); ell(c, 62, -480, 20, 12, BLUSH);
+  if (o.beard) { c.fillStyle = o.hair; c.beginPath(); c.ellipse(0, -470, 86, 62, 0, 0, Math.PI); c.fill(); }
+  c.strokeStyle = "#5b3a3a"; c.lineWidth = 6; c.lineCap = "round";
+  if (pose.mouth === "o") { ell(c, 0, -462, 12, 16, "#5b2f35"); }
+  else if (pose.mouth === "smile") { c.beginPath(); c.arc(0, -478, 20, 0.2 * Math.PI, 0.8 * Math.PI); c.stroke(); }
+  else if (!o.beard) { c.beginPath(); c.moveTo(-18, -462); c.lineTo(18, -462); c.stroke(); }
+  c.restore();
+}
+
+// ---------- окружение ----------
+function cloudPuff(c, x, y, s, col) {
+  c.fillStyle = col;
+  for (const [dx, dy, r] of [[0, 0, 90], [80, 20, 70], [-85, 25, 65], [40, -40, 70], [-40, -30, 60], [130, 40, 50], [-130, 45, 45]]) {
+    c.beginPath(); c.arc(x + dx * s, y + dy * s, r * s, 0, Math.PI * 2); c.fill();
+  }
+}
+const CANOPY = off(1500, 2600, (c, w, h) => {
+  const r = rng(7);
+  c.fillStyle = "#123a24"; c.fillRect(0, 0, w, h);
+  const greens = ["#1d5a33", "#24703c", "#2f8545", "#174d2c", "#3a9a50", "#1a6136"];
+  for (let i = 0; i < 2600; i++) {
+    const x = r() * w, y = r() * h, s = 22 + r() * 60;
+    c.fillStyle = greens[(r() * greens.length) | 0];
+    for (let k = 0; k < 5; k++) { c.beginPath(); c.arc(x + (r() - 0.5) * s, y + (r() - 0.5) * s, s * (0.5 + r() * 0.4), 0, Math.PI * 2); c.fill(); }
+    c.fillStyle = "rgba(160,220,120,0.18)"; c.beginPath(); c.arc(x - s * 0.2, y - s * 0.25, s * 0.35, 0, Math.PI * 2); c.fill();
+  }
+});
+const LEAVES = off(1200, 2000, (c, w, h) => {
+  const r = rng(21);
+  for (let i = 0; i < 140; i++) {
+    const x = r() * w, y = r() * h, s = 60 + r() * 140, a = r() * Math.PI * 2;
+    c.save(); c.translate(x, y); c.rotate(a);
+    c.fillStyle = ["#0f3a20", "#14502b", "#0b2c18"][(r() * 3) | 0];
+    c.beginPath(); c.ellipse(0, 0, s, s * 0.38, 0, 0, Math.PI * 2); c.fill();
+    c.restore();
+  }
+});
+function canopy(c, ox, oy, sc) { c.save(); c.translate(W / 2, H / 2); c.scale(sc, sc); c.drawImage(CANOPY, -750 + ox, -1300 + oy); c.restore(); }
+
+function seatRow(c, x, y, s, n = 3, col = "#3f5f9a") {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  for (let i = 0; i < n; i++) {
+    const sx = (i - (n - 1) / 2) * 190;
+    c.fillStyle = col; rr(c, sx - 80, -330, 160, 290, 34); c.fill();
+    c.fillStyle = "rgba(255,255,255,0.12)"; rr(c, sx - 60, -320, 120, 50, 20); c.fill();
+    c.fillStyle = "#2e4675"; rr(c, sx - 86, -60, 172, 70, 20); c.fill();
+  }
+  c.fillStyle = "#6b6f78"; c.fillRect(-(n * 190) / 2, 10, n * 190, 16);
+  c.restore();
+}
+// девушка, сидящая в кресле (в ряду), вид спереди
+function girlInSeat(c, x, y, s, pose = {}, n = 3) {
+  seatRow(c, x, y, s, n);
+  const px = x + (pose.slot !== undefined ? pose.slot : 0) * 190 * s;
+  c.save();
+  c.beginPath(); c.rect(px - 300 * s, y - 900 * s, 600 * s, 880 * s); c.clip();
+  person(c, px, y + 150 * s, s, JUL, Object.assign({ noLegs: true }, pose));
+  c.restore();
+  // ноги свисают вперёд
+  c.fillStyle = SKIN; rr(c, px - 50 * s, y - 20 * s, 32 * s, 170 * s, 14 * s); c.fill(); rr(c, px + 18 * s, y - 20 * s, 32 * s, 170 * s, 14 * s); c.fill();
+  // ремень
+  c.fillStyle = "#2b2f3a"; c.fillRect(px - 110 * s, y - 60 * s, 220 * s, 22 * s);
+  c.fillStyle = "#c9ccd4"; rr(c, px - 26 * s, y - 66 * s, 52 * s, 34 * s, 6 * s); c.fill();
+}
+
+function plane(c, x, y, s, flip = 1) { // вид сбоку, 4 винта
+  c.save(); c.translate(x, y); c.scale(s * flip, s);
+  c.fillStyle = "#e8ebef"; rr(c, -300, -45, 600, 90, 45); c.fill();
+  c.fillStyle = "#c4342f"; c.fillRect(-290, -4, 570, 14);
+  c.fillStyle = "#e8ebef"; c.beginPath(); c.moveTo(-270, -40); c.lineTo(-330, -150); c.lineTo(-280, -150); c.lineTo(-200, -40); c.fill();
+  c.fillStyle = "#c4342f"; c.beginPath(); c.moveTo(-300, -100); c.lineTo(-330, -150); c.lineTo(-280, -150); c.lineTo(-262, -100); c.fill();
+  c.fillStyle = "#cfd3d9"; c.beginPath(); c.moveTo(-40, 10); c.lineTo(80, 10); c.lineTo(-10, 70); c.lineTo(-90, 70); c.fill();
+  c.fillStyle = "#b7bcc4"; rr(c, 10, 10, 70, 26, 13); c.fill();
+  c.fillStyle = "#2e3a55"; for (let i = 0; i < 13; i++) { c.beginPath(); c.arc(-220 + i * 36, -18, 8, 0, Math.PI * 2); c.fill(); }
+  c.fillStyle = "#2e3a55"; c.beginPath(); c.moveTo(250, -30); c.quadraticCurveTo(290, -28, 296, -5); c.lineTo(250, -5); c.fill();
+  c.restore();
+}
+function planeTop(c, s) { // вид сверху, части отдельно: [фюзеляж-нос, хвост, левое крыло, правое крыло]
+  return {
+    nose: () => { c.fillStyle = "#e8ebef"; rr(c, -40, -300, 80, 330, 40); c.fill(); c.fillStyle = "#c4342f"; c.fillRect(-6, -290, 12, 310); },
+    tail: () => { c.fillStyle = "#e8ebef"; rr(c, -36, 30, 72, 230, 30); c.fill(); c.fillStyle = "#dfe2e7"; c.beginPath(); c.moveTo(-120, 250); c.lineTo(120, 250); c.lineTo(30, 200); c.lineTo(-30, 200); c.fill(); },
+    wingL: () => { c.fillStyle = "#d7dbe1"; c.beginPath(); c.moveTo(-40, -110); c.lineTo(-330, -40); c.lineTo(-330, 0); c.lineTo(-40, -40); c.fill(); c.fillStyle = "#b7bcc4"; for (const ex of [-130, -230]) { rr(c, ex - 16, -125, 32, 90, 14); c.fill(); } },
+    wingR: () => { c.fillStyle = "#d7dbe1"; c.beginPath(); c.moveTo(40, -110); c.lineTo(330, -40); c.lineTo(330, 0); c.lineTo(40, -40); c.fill(); c.fillStyle = "#b7bcc4"; for (const ex of [130, 230]) { rr(c, ex - 16, -125, 32, 90, 14); c.fill(); } },
+  };
+}
+function bolt(c, x0, y0, x1, y1, seed, wdt = 10) {
+  const r = rng(seed), n = 9; c.strokeStyle = "#fffbe8"; c.lineWidth = wdt; c.lineJoin = "round";
+  c.shadowColor = "#bfd4ff"; c.shadowBlur = 40;
+  c.beginPath(); c.moveTo(x0, y0);
+  for (let i = 1; i <= n; i++) { const k = i / n; c.lineTo(lerp(x0, x1, k) + (i < n ? (r() - 0.5) * 140 : 0), lerp(y0, y1, k)); }
+  c.stroke(); c.shadowBlur = 0;
+}
+function rain(c, t, alpha = 0.35, n = 160) {
+  const r = rng(99); c.strokeStyle = `rgba(190,210,255,${alpha})`; c.lineWidth = 3;
+  c.beginPath();
+  for (let i = 0; i < n; i++) { const x = r() * W, sp = 1800 + r() * 900, y = ((r() * H + t * sp) % (H + 200)) - 100; c.moveTo(x, y); c.lineTo(x - 18, y + 70); }
+  c.stroke();
+}
+function water(c, y0, t, col1, col2) {
+  c.fillStyle = vgrad(c, y0, H, [[0, col1], [1, col2]]); c.fillRect(0, y0, W, H - y0);
+  c.strokeStyle = "rgba(255,255,255,0.18)"; c.lineWidth = 4;
+  const r = rng(3);
+  for (let i = 0; i < 26; i++) { const yy = y0 + 30 + r() * (H - y0), xx = ((r() * W + t * 90 * (0.5 + r())) % (W + 200)) - 100; c.beginPath(); c.moveTo(xx, yy); c.lineTo(xx + 60 + r() * 60, yy); c.stroke(); }
+}
+function grain(c, t, a = 0.06) {
+  const r = rng((t * 30) | 0); c.fillStyle = `rgba(255,255,255,${a})`;
+  for (let i = 0; i < 500; i++) c.fillRect(r() * W, r() * H, 2, 2);
+}
+
+// ---------- сцены ----------
+// 0. Хук: падение с высоты (0 - 5.3)
+function sHook(t) {
+  const k = inv(0, 4.1, t);
+  ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#141a33"], [0.6, "#2a3552"], [1, "#3a4a5a"]]); ctx.fillRect(0, 0, W, H);
+  // джунгли проступают снизу
+  ctx.globalAlpha = 0.25 + k * 0.6; canopy(ctx, 0, -t * 40, 0.35 + k * 0.5); ctx.globalAlpha = 1;
+  ctx.fillStyle = vgrad(ctx, 0, H, [[0, "rgba(20,26,51,0.95)"], [0.55, "rgba(20,26,51,0.2)"], [1, "rgba(20,26,51,0)"]]); ctx.fillRect(0, 0, W, H);
+  // облака летят вверх
+  const r = rng(5);
+  for (let i = 0; i < 9; i++) { const x = r() * W, sp = 600 + r() * 700, y = H + 300 - ((t * sp + r() * 2400) % (H + 700)); cloudPuff(ctx, x, y, 0.9 + r(), `rgba(200,210,230,${0.18 + r() * 0.2})`); }
+  const rot = Math.sin(t * 1.3) * 0.08;
+  ctx.save(); ctx.translate(W / 2, 980); ctx.rotate(rot); ctx.translate(-W / 2, -980);
+  girlInSeat(ctx, W / 2, 1020, 0.85, { slot: 0, eyes: t > 1.4 ? "wide" : "open", armL: 0.5 + Math.sin(t * 3) * 0.1, armR: 0.6, mouth: "o" });
+  ctx.restore();
+  hudPill("ПЕРУ · 1971", t);
+  hudCounter("ВЫСОТА", `${Math.round(lerp(3000, 0, ease(inv(1.45, 4.05, t))))} м`, t, "#ff4d4d");
+  // вспышка на «и выжила»
+  const f = t < 4.1 ? 0 : 1 - inv(4.2, 5.2, t);
+  if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// 1. Аэропорт Лимы (5.3 - 14.5)
+function sAirport(t) {
+  const z = t < 10.3 ? lerp(1, 1.12, inv(5.3, 10.3, t)) : t < 12.55 ? lerp(1.7, 1.85, inv(10.3, 12.55, t)) : 1;
+  ctx.save();
+  if (t < 12.55) {
+    if (t < 10.3) { ctx.translate(W / 2, 960); ctx.scale(z, z); ctx.translate(-W / 2, -960); }
+    else { ctx.translate(W / 2, 830); ctx.scale(z, z); ctx.translate(-540, -1060); }
+    // стена и окно
+    ctx.fillStyle = "#3a3f4f"; ctx.fillRect(-200, -200, W + 400, H + 400);
+    ctx.fillStyle = vgrad(ctx, 260, 1100, [[0, "#9aa3b2"], [1, "#c7ccd3"]]); ctx.fillRect(40, 260, W - 80, 820);
+    ctx.strokeStyle = "#2c3140"; ctx.lineWidth = 16; for (let i = 0; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(40 + i * (W - 80) / 4, 260); ctx.lineTo(40 + i * (W - 80) / 4, 1080); ctx.stroke(); }
+    ctx.fillStyle = "#7d8592"; ctx.fillRect(40, 900, W - 80, 180);
+    plane(ctx, 560, 880, 0.95, -1);
+    // табло
+    ctx.fillStyle = "#121521"; rr(ctx, 120, 300, W - 240, 140, 14); ctx.fill();
+    ctx.font = "800 44px M"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd93b"; ctx.textAlign = "center";
+    ctx.fillText("LANSA 508 · PUCALLPA", W / 2, 370);
+    // пол
+    ctx.fillStyle = "#565c6c"; ctx.fillRect(-200, 1080, W + 400, H);
+    ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(-200, 1080, W + 400, 30);
+    person(ctx, 400, 1560, 0.95, MOM, { look: 1, brows: t > 10.3 ? 1 : 0 });
+    person(ctx, 680, 1580, 0.85, JUL, { look: -1, brows: t > 10.3 ? 1 : 0, eyes: t > 11.8 && t < 12.0 ? "closed" : "open" });
+    ctx.fillStyle = "#7a4b3a"; rr(ctx, 820, 1460, 120, 120, 16); ctx.fill();
+  } else {
+    // крупно табло: других мест нет
+    const k = easeOut(inv(12.55, 13.0, t));
+    ctx.fillStyle = "#0d0f18"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#151926"; rr(ctx, 60, 300, W - 120, 860, 24); ctx.fill();
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const rows = [["РЕЙС · · ·", "PUCALLPA", "НЕТ МЕСТ", "#ff4d4d", 12.75], ["РЕЙС · · ·", "PUCALLPA", "НЕТ МЕСТ", "#ff4d4d", 13.1], ["LANSA 508", "PUCALLPA", "ПОСАДКА", "#ffd93b", 13.5]];
+    rows.forEach(([a, b, st, col, at], i) => {
+      const y = 420 + i * 240;
+      ctx.font = "800 48px M"; ctx.fillStyle = "#e9ecf3"; ctx.fillText(a, 110, y);
+      ctx.font = "800 34px M"; ctx.fillStyle = "#8a90a3"; ctx.fillText(b, 110, y + 60);
+      const on = t > at;
+      ctx.fillStyle = on ? col : "#3a3f50"; ctx.font = "900 46px M"; ctx.textAlign = "right"; ctx.fillText(on ? st : "· · ·", W - 110, y + 28); ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255,255,255,0.06)"; ctx.fillRect(100, y + 110, W - 200, 4);
+    });
+    ctx.globalAlpha = 1 - k; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  vignette(ctx, 0.5);
+  hudPill(t < 9.39 ? "24 ДЕКАБРЯ 1971" : "ЛИМА · 24.12.1971", t);
+  if (t < 5.6) { ctx.fillStyle = `rgba(0,0,0,${1 - inv(5.3, 5.6, t)})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// 2. Полёт и салон (14.5 - 20.95)
+function sFlight(t) {
+  if (t < 17.5) {
+    const k = inv(14.5, 17.5, t);
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, lerp2("#6f86a8", "#2b3048", k)], [0.6, lerp2("#a8b6c8", "#454a62", k)], [1, "#2f4a3a"]]); ctx.fillRect(0, 0, W, H);
+    // горы
+    ctx.fillStyle = "#4a5470"; ctx.beginPath(); ctx.moveTo(0, 1500); for (let i = 0; i <= 8; i++) ctx.lineTo(i * 140 - k * 120, i % 2 ? 1200 : 1420); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+    ctx.fillStyle = "#e8edf3"; for (let i = 1; i <= 7; i += 2) { const x = i * 140 - k * 120; ctx.beginPath(); ctx.moveTo(x, 1200); ctx.lineTo(x - 45, 1265); ctx.lineTo(x + 45, 1265); ctx.fill(); }
+    ctx.fillStyle = "#2d5a3a"; ctx.beginPath(); ctx.moveTo(0, 1600); for (let i = 0; i <= 12; i++) ctx.lineTo(i * 100 - k * 220, 1560 + Math.sin(i) * 30); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+    // грозовые тучи справа
+    for (let i = 0; i < 6; i++) cloudPuff(ctx, 760 + i * 70 - k * 200, 500 + (i % 3) * 140, 1.3, `rgba(40,42,62,${0.5 + k * 0.4})`);
+    plane(ctx, lerp(180, 520, k), 760 + Math.sin(t * 2) * 8, 0.9);
+    if (t > 16.45) { ctx.font = "900 1px M"; }
+  } else {
+    // вид из кресла: иллюминатор
+    const k = inv(17.5, 20.0, t), sh = (2 + k * 14) * Math.sin(t * 47), sh2 = (2 + k * 14) * Math.cos(t * 39);
+    ctx.save(); ctx.translate(sh, sh2);
+    ctx.fillStyle = "#3a3d4a"; ctx.fillRect(-40, -40, W + 80, H + 80);
+    ctx.save(); rr(ctx, 260, 360, 560, 820, 260); ctx.clip();
+    ctx.fillStyle = vgrad(ctx, 360, 1180, [[0, "#1a1c2c"], [1, "#2c2f45"]]); ctx.fillRect(260, 360, 560, 820);
+    for (let i = 0; i < 7; i++) cloudPuff(ctx, 200 + ((i * 160 + t * 260) % 900), 500 + (i % 3) * 230, 1, "rgba(70,72,100,0.8)");
+    const fl = flashAt(t, [18.6, 19.4, 20.07]);
+    if (fl > 0) { if (t > 20.0) bolt(ctx, 420, 340, 640, 1200, 11, 14); else bolt(ctx, 380 + (t % 1) * 200, 340, 520, 900, (t * 10) | 0, 7); ctx.fillStyle = `rgba(220,230,255,${fl * 0.7})`; ctx.fillRect(260, 360, 560, 820); }
+    rain(ctx, t, 0.4, 70);
+    ctx.restore();
+    ctx.strokeStyle = "#d8dbe3"; ctx.lineWidth = 46; rr(ctx, 260, 360, 560, 820, 260); ctx.stroke();
+    ctx.strokeStyle = "#9da2ae"; ctx.lineWidth = 10; rr(ctx, 236, 336, 608, 868, 284); ctx.stroke();
+    // рука на подлокотнике и мамина рука
+    ctx.fillStyle = "#5a5f72"; rr(ctx, 60, 1500, 960, 120, 40); ctx.fill();
+    ctx.fillStyle = SKIN; rr(ctx, 120, 1440, 340, 80, 40); ctx.fill(); ell(ctx, 470, 1480, 46, 40, SKIN);
+    ctx.fillStyle = MOM.top; rr(ctx, 620, 1430, 420, 90, 40); ctx.fill(); ell(ctx, 610, 1475, 46, 40, SKIN);
+    ctx.restore();
+    const big = t > 20.07 ? 1 - inv(20.07, 20.9, t) : 0;
+    if (big > 0) { ctx.fillStyle = `rgba(255,255,255,${big})`; ctx.fillRect(0, 0, W, H); }
+    vignette(ctx, 0.6);
+  }
+  hudPill("LANSA 508", t);
+}
+function lerp2(a, b, k) { const p = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], k))).join(",")})`; }
+function flashAt(t, ts) { let m = 0; for (const x of ts) { if (t >= x) m = Math.max(m, 1 - (t - x) / 0.35); } return clamp(m); }
+
+// 3. Распад (20.95 - 23.2)
+function sBreak(t) {
+  const k = inv(21.3, 23.1, t);
+  ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#0d0f1c"], [1, "#1c2033"]]); ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 8; i++) cloudPuff(ctx, (i * 190 + 80) % W, ((i * 330 + t * 500) % (H + 400)) - 200, 1.4, "rgba(45,48,70,0.85)");
+  const fl = flashAt(t, [21.0, 21.6]);
+  ctx.save(); ctx.translate(W / 2, 900); ctx.scale(1.25, 1.25);
+  const P = planeTop(ctx), e = easeOut(k);
+  const part = (fn, dx, dy, rot) => { ctx.save(); ctx.translate(dx * e, dy * e); ctx.rotate(rot * e); fn(); ctx.restore(); };
+  part(P.wingL, -160, 60, -0.9);
+  part(P.nose, -30, -200, -0.5);
+  part(P.tail, 60, 260, 0.8);
+  part(P.wingR, 260, 90, 1.4);
+  // огонь у правого крыла
+  if (t > 21.2) { glow(ctx, 120 + 260 * e, -60 + 90 * e, 160, "rgba(255,140,40,A)", 0.9); glow(ctx, 120 + 260 * e, -60 + 90 * e, 70, "rgba(255,230,140,A)", 1); }
+  // ряд кресел уходит вниз
+  if (t > 21.7) { ctx.save(); const sk = inv(21.7, 23.1, t); ctx.translate(-20 + sk * 40, 40 + sk * 900); ctx.rotate(sk * 2.5); ctx.scale(0.35 - sk * 0.2, 0.35 - sk * 0.2); seatRow(ctx, 0, 0, 1); ctx.restore(); }
+  ctx.restore();
+  if (fl > 0) { bolt(ctx, 200, 0, 560, 820, 31, 16); ctx.fillStyle = `rgba(230,236,255,${fl * 0.6})`; ctx.fillRect(0, 0, W, H); }
+  vignette(ctx, 0.65);
+  hudPill("LANSA 508", t);
+}
+
+// 4. Падение (23.2 - 25.71)
+function sFall(t) {
+  const k = ease(inv(24.2, 25.4, t));
+  ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#3a4660"], [1, "#55667a"]]); ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = k; canopy(ctx, 0, 0, lerp(0.4, 0.75, k)); ctx.globalAlpha = 1;
+  const r = rng(8);
+  for (let i = 0; i < 10; i++) { const x = r() * W, y = H + 300 - ((t * (900 + r() * 800) + r() * 2400) % (H + 700)); cloudPuff(ctx, x, y, 1 + r(), `rgba(220,226,238,${(0.25 + r() * 0.2) * (1 - k * 0.6)})`); }
+  const sc = lerp(2.2, 0.16, k), cy = lerp(1650, 960, k);
+  ctx.save(); ctx.translate(W / 2, cy); ctx.rotate(Math.sin(t * 2) * 0.1 + k * 1.2); ctx.translate(-W / 2, -cy);
+  girlInSeat(ctx, W / 2, cy, sc, { slot: 0, eyes: "wide", mouth: "o", armL: 0.7, armR: 0.8, brows: 1 });
+  ctx.restore();
+  hudPill("ПЕРУ · СЕЛЬВА", t);
+  hudCounter("ВЫСОТА", `${Math.round(lerp(3000, 0, ease(inv(23.26, 25.55, t))))} м`, t, "#ff4d4d");
+  const f = inv(25.35, 25.65, t); if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// 5. Пробуждение (25.71 - 32.36)
+function sWake(t) {
+  ctx.fillStyle = "#0f2a19"; ctx.fillRect(0, 0, W, H);
+  if (t < 28.06) {
+    // вид сверху сквозь листву
+    const z = t < 27.25 ? 1.0 : lerp(1.0, 0.7, ease(inv(27.25, 27.9, t)));
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+    ctx.fillStyle = "#2b3d22"; ctx.fillRect(-600, -600, W + 1200, H + 1200);
+    const r = rng(12); for (let i = 0; i < 60; i++) ell(ctx, r() * 2200 - 600, r() * 3100 - 600, 30 + r() * 60, 14 + r() * 20, ["#3a4b28", "#24331c", "#4a5a2c"][i % 3]);
+    // обломки
+    ctx.fillStyle = "#b7bcc4"; ctx.save(); ctx.translate(250, 700); ctx.rotate(0.5); rr(ctx, 0, 0, 220, 60, 10); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(800, 1350); ctx.rotate(-0.3); ctx.fillStyle = "#cfd3d9"; rr(ctx, 0, 0, 160, 90, 10); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(W / 2 + 120, 980); ctx.rotate(-0.25); seatRow(ctx, 0, 0, 0.6); ctx.restore();
+    const sit = inv(26.3, 26.9, t);
+    ctx.save(); ctx.translate(W / 2 - 120, 1050); ctx.rotate(lerp(-1.4, 0, ease(sit)));
+    person(ctx, 0, 0, 0.85, JUL, { eyes: t < 26.1 ? "closed" : "open", look: t > 27.3 ? Math.sin(t * 4) : 0, oneShoe: true, cuts: true, armR: 0.2 });
+    ctx.restore();
+    ctx.restore();
+    glow(ctx, W / 2 - 120, 800, 520, "rgba(255,245,200,A)", 0.28);
+    // листва на переднем плане
+    ctx.globalAlpha = 0.8; ctx.drawImage(LEAVES, -260 - (t - 25.7) * 20, -500); ctx.globalAlpha = 1;
+    const g = ctx.createRadialGradient(W / 2, 1000, 100, W / 2, 1000, 900); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,10,0,0.75)"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    glow(ctx, 640, 300, 400, "rgba(255,240,180,A)", 0.18);
+  } else if (t < 30.83) {
+    // травмы: средний план
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#1e4a2c"], [1, "#0c2214"]]); ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.5; ctx.drawImage(LEAVES, -100, -300); ctx.globalAlpha = 1;
+    const z = lerp(1.6, 1.75, inv(28.06, 30.83, t));
+    ctx.save(); ctx.translate(W / 2, 1720); ctx.scale(z, z);
+    person(ctx, 0, 0, 1, JUL, { cuts: true, armL: 0.9, armR: 0.15, brows: 1, eyes: "open", look: 1, tired: false });
+    // ключица
+    ctx.strokeStyle = "#d14a52"; ctx.lineWidth = 8; ctx.setLineDash([16, 10]); ctx.beginPath(); ctx.moveTo(-60, -395); ctx.lineTo(10, -380); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+    const hi = t < 29.3 ? 1 : 0;
+    glow(ctx, hi ? W / 2 - 40 : W / 2 + 250, hi ? 1060 : 1300, 260, "rgba(255,60,60,A)", 0.25 + 0.15 * Math.sin(t * 8));
+  } else {
+    // пустое кресло рядом
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#173a24"], [1, "#0a1d11"]]); ctx.fillRect(0, 0, W, H);
+    seatRow(ctx, W / 2 + 200, 1250, 1.2, 2);
+    person(ctx, W / 2 - 290, 1750, 0.95, JUL, { look: 1, brows: 1, oneShoe: true, cuts: true });
+    glow(ctx, W / 2 + 200, 1000, 380, "rgba(200,230,255,A)", 0.12);
+    ctx.globalAlpha = 0.7; ctx.drawImage(LEAVES, 300, -700); ctx.globalAlpha = 1;
+  }
+  vignette(ctx, 0.55);
+  hudPill("ПЕРУ · СЕЛЬВА", t);
+  hudCounter("ДНЕЙ В ДЖУНГЛЯХ", "1", t, "#ff4d4d");
+  const f = 1 - inv(25.71, 26.2, t); if (f > 0) { ctx.fillStyle = `rgba(255,255,255,${f})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// 6. Флешбэк: отец (32.36 - 37.56)
+function sDad(t) {
+  ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#5a3a22"], [1, "#2a1a10"]]); ctx.fillRect(0, 0, W, H);
+  glow(ctx, 820, 420, 700, "rgba(255,190,110,A)", 0.55);
+  // окно в лес
+  ctx.fillStyle = "#3f6a3a"; rr(ctx, 90, 260, 380, 460, 12); ctx.fill();
+  ctx.strokeStyle = "#7a5233"; ctx.lineWidth = 18; rr(ctx, 90, 260, 380, 460, 12); ctx.stroke(); ctx.beginPath(); ctx.moveTo(280, 260); ctx.lineTo(280, 720); ctx.stroke();
+  // лампа
+  ctx.fillStyle = "#f3d58e"; ctx.beginPath(); ctx.moveTo(760, 330); ctx.lineTo(880, 330); ctx.lineTo(920, 430); ctx.lineTo(720, 430); ctx.fill();
+  const z = lerp(1, 1.08, inv(32.36, 37.56, t));
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
+  person(ctx, 330, 1520, 0.95, DAD, { armR: 0.9, mouth: t > 34.87 ? (Math.sin(t * 18) > 0 ? "o" : null) : "smile" });
+  person(ctx, 780, 1560, 0.72, JUL, { look: -1, mouth: "smile" });
+  // стол с картой: река
+  ctx.fillStyle = "#6b4527"; rr(ctx, 120, 1380, 840, 70, 12); ctx.fill();
+  ctx.fillStyle = "#e9dcbc"; ctx.save(); ctx.translate(540, 1370); ctx.scale(1, 0.35); rr(ctx, -280, -150, 560, 300, 10); ctx.fill();
+  ctx.strokeStyle = "#3d8fd0"; ctx.lineWidth = 16; ctx.lineCap = "round"; const d = inv(33.4, 35.6, t);
+  ctx.beginPath(); for (let i = 0; i <= 40 * d; i++) { const x = -240 + i * 12, y = Math.sin(i * 0.35) * 70; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+  // тёплый фильтр и зерно
+  ctx.fillStyle = "rgba(255,170,90,0.12)"; ctx.fillRect(0, 0, W, H);
+  grain(ctx, t, 0.05); vignette(ctx, 0.7);
+  hudPill("ВОСПОМИНАНИЕ", t);
+  const f = 1 - inv(32.36, 32.7, t); if (f > 0) { ctx.fillStyle = `rgba(255,230,190,${f})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// 7. Путь (37.56 - 44.93)
+function sPath(t) {
+  let day = 1;
+  if (t < 38.96) {
+    // ноги в ручье
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#1f4a2a"], [1, "#163522"]]); ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.8; ctx.drawImage(LEAVES, -200 - t * 30, -900); ctx.globalAlpha = 1;
+    water(ctx, 1200, t, "#3f7c86", "#1f4a55");
+    const ph = t * 6;
+    ctx.save(); ctx.translate(W / 2, 1620); ctx.scale(2.6, 2.6);
+    ctx.beginPath(); ctx.rect(-300, -260, 600, 300); ctx.clip();
+    person(ctx, 0, 0, 1, JUL, { walk: ph, oneShoe: true, bob: Math.abs(Math.sin(ph)) * -8 });
+    ctx.restore();
+    ctx.fillStyle = "rgba(63,124,134,0.55)"; ctx.fillRect(0, 1560, W, H);
+    ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 5; for (let i = 0; i < 3; i++) { const rr2 = ((t * 2 + i / 3) % 1) * 260; ctx.globalAlpha = 1 - ((t * 2 + i / 3) % 1); ctx.beginPath(); ctx.ellipse(W / 2, 1580, rr2, rr2 * 0.25, 0, 0, Math.PI * 2); ctx.stroke(); } ctx.globalAlpha = 1;
+  } else if (t < 40.29) {
+    // день за днём: смена дня и ночи
+    const k = inv(38.96, 40.29, t), cyc = (k * 4.5) % 1, night = Math.sin(cyc * Math.PI * 2) * 0.5 + 0.5;
+    day = 1 + Math.floor(k * 9.99);
+    ctx.fillStyle = lerp2("#4f8a63", "#0c1424", night); ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 5; i++) { ctx.fillStyle = lerp2(["#1d5a33", "#24703c", "#174d2c", "#2f8545", "#1a6136"][i], "#08101a", night); ctx.beginPath(); ctx.moveTo(0, 500 + i * 140); for (let x = 0; x <= W; x += 60) ctx.lineTo(x, 520 + i * 140 + Math.sin(x * 0.02 + i) * 60); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill(); }
+    ctx.fillStyle = lerp2("#4f97a8", "#1a2c44", night); ctx.beginPath(); ctx.moveTo(380, H); ctx.quadraticCurveTo(520, 1300, 500, 1000); ctx.lineTo(580, 1000); ctx.quadraticCurveTo(620, 1300, 760, H); ctx.fill();
+    if (night > 0.6) rain(ctx, t, 0.5);
+    person(ctx, 540 + Math.sin(k * 20) * 20, 1760, 0.36, JUL, { walk: t * 8, oneShoe: true });
+  } else if (t < 42.4) {
+    // самолёт над кронами
+    canopy(ctx, 0, -(t - 40) * 30, 0.9);
+    const k = inv(40.29, 42.4, t);
+    ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = "#000"; ctx.translate(lerp(-300, W + 300, k) + 60, 1050); ctx.scale(1, 0.6); ctx.beginPath(); ctx.ellipse(0, 0, 260, 60, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    plane(ctx, lerp(-300, W + 300, k), 620, 0.75);
+    // она под кронами: крошечная, почти невидима
+    ctx.globalAlpha = 0.35; person(ctx, 640, 1330, 0.08, JUL, {}); ctx.globalAlpha = 1;
+  } else {
+    // конфеты, ночь, дождь
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#0b1424"], [1, "#05080f"]]); ctx.fillRect(0, 0, W, H);
+    glow(ctx, W / 2, 1200, 600, "rgba(120,160,255,A)", 0.12);
+    ctx.fillStyle = SKIN; ell(ctx, W / 2, 1300, 260, 150, SKIN);
+    ctx.fillStyle = SKIN_SH; ell(ctx, W / 2, 1330, 200, 90, SKIN_SH);
+    const cols = ["#e94b5a", "#ffd93b", "#5fbf7a"]; const shown = 1 + Math.floor(inv(42.5, 43.6, t) * 2.99);
+    for (let i = 0; i < shown; i++) { const x = W / 2 - 110 + i * 110, y = 1280 + (i % 2) * 20; ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.moveTo(x - 70, y - 26); ctx.lineTo(x - 40, y); ctx.lineTo(x - 70, y + 26); ctx.fill(); ctx.beginPath(); ctx.moveTo(x + 70, y - 26); ctx.lineTo(x + 40, y); ctx.lineTo(x + 70, y + 26); ctx.fill(); ell(ctx, x, y, 46, 34, cols[i]); ell(ctx, x - 12, y - 10, 12, 8, "rgba(255,255,255,0.5)"); }
+    rain(ctx, t, 0.45);
+    day = 10;
+  }
+  if (t >= 40.29) day = 10;
+  vignette(ctx, 0.55);
+  hudPill("ПЕРУ · СЕЛЬВА", t);
+  hudCounter("ДНЕЙ В ДЖУНГЛЯХ", String(day), t, "#ff4d4d");
+}
+
+// 8. Спасение (44.93 - 50.74), финальный титр
+function sRescue(t) {
+  if (t < 47.6) {
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#f0a35e"], [0.45, "#e07a4f"], [1, "#4a2a30"]]); ctx.fillRect(0, 0, W, H);
+    glow(ctx, 760, 700, 500, "rgba(255,220,150,A)", 0.7);
+    ctx.fillStyle = "#3b2a2a"; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, 820 + i * 60); for (let x = 0; x <= W; x += 80) ctx.lineTo(x, 800 + i * 60 + Math.sin(x * 0.015 + i * 2) * 50); ctx.lineTo(W, 1200); ctx.lineTo(0, 1200); ctx.fill(); }
+    water(ctx, 1150, t, "#d98a5e", "#5a3438");
+    // хижина на сваях
+    ctx.fillStyle = "#5a3a24"; for (const x of [600, 720, 840]) ctx.fillRect(x, 1000, 18, 220);
+    ctx.fillStyle = "#8a5a34"; ctx.fillRect(570, 900, 320, 110);
+    ctx.fillStyle = "#c79a4a"; ctx.beginPath(); ctx.moveTo(530, 920); ctx.lineTo(730, 760); ctx.lineTo(930, 920); ctx.fill();
+    ctx.fillStyle = "#ffcf7a"; ctx.fillRect(700, 930, 60, 60); glow(ctx, 730, 960, 140, "rgba(255,200,120,A)", 0.5);
+    const k = ease(inv(44.93, 47.3, t));
+    person(ctx, lerp(150, 430, k), 1240, 0.32, JUL, { walk: t * 7, oneShoe: true });
+  } else {
+    ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#f3b06a"], [0.4, "#e58a55"], [1, "#4a2a30"]]); ctx.fillRect(0, 0, W, H);
+    glow(ctx, 540, 640, 600, "rgba(255,225,160,A)", 0.7);
+    ctx.fillStyle = "#3b2a2a"; ctx.beginPath(); ctx.moveTo(0, 820); for (let x = 0; x <= W; x += 80) ctx.lineTo(x, 800 + Math.sin(x * 0.012) * 60); ctx.lineTo(W, 1000); ctx.lineTo(0, 1000); ctx.fill();
+    water(ctx, 980, t, "#e09a66", "#4a2c34");
+    const k = inv(47.6, 50.74, t), bx = lerp(-80, 260, k) + 400, by = 1350 + Math.sin(t * 2) * 8;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, by + 10); ctx.clip();
+    person(ctx, bx - 240, by + 60, 0.42, CUTTER, { armL: 0.6, armR: -0.4 });
+    person(ctx, bx, by + 60, 0.38, JUL, { eyes: "closed", mouth: "smile", oneShoe: true });
+    person(ctx, bx + 230, by + 60, 0.42, CUTTER2, { armL: -0.4, armR: 0.6 });
+    ctx.restore();
+    ctx.fillStyle = "#5a3220"; ctx.beginPath(); ctx.moveTo(bx - 380, by - 20); ctx.lineTo(bx + 380, by - 20); ctx.quadraticCurveTo(bx + 320, by + 70, bx + 240, by + 70); ctx.lineTo(bx - 240, by + 70); ctx.quadraticCurveTo(bx - 320, by + 70, bx - 380, by - 20); ctx.fill();
+    ctx.strokeStyle = "#7a4a2a"; ctx.lineWidth = 12; ctx.beginPath(); const pa = Math.sin(t * 3) * 0.5; ctx.moveTo(bx - 260, by - 120); ctx.lineTo(bx - 260 - 120 * Math.cos(pa), by + 120); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.25)"; for (let i = 0; i < 5; i++) ctx.fillRect(bx - 440 - i * 90 - ((t * 200) % 90), by + 60 + (i % 2) * 14, 60, 5);
+  }
+  vignette(ctx, 0.45);
+  hudPill("ПЕРУ · ЯНВАРЬ 1972", t);
+  hudCounter("ДНЕЙ В ДЖУНГЛЯХ", t > 47.6 ? "11" : "10", t, "#ff4d4d");
+}
+function sEnd(t) {
+  ctx.fillStyle = "#07070b"; ctx.fillRect(0, 0, W, H);
+  const k = easeOut(inv(50.8, 51.3, t));
+  ctx.save(); ctx.translate(W / 2, 900); ctx.scale(0.85 + 0.15 * k, 0.85 + 0.15 * k); ctx.globalAlpha = k;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  strokeText("ЧЕРЕЗ", 0, -150, 120, "#fff");
+  strokeText("11 ДНЕЙ", 0, 20, 190, "#ff4d4d");
+  ctx.font = "800 46px M"; ctx.fillStyle = "#9aa0b2"; ctx.globalAlpha = k * inv(51.6, 52.2, t);
+  ctx.fillText("ЮЛИАНА КЁПКЕ", 0, 220); ctx.fillText("ЕДИНСТВЕННАЯ ВЫЖИВШАЯ", 0, 290);
+  ctx.restore();
+  const f = inv(53.2, 53.8, t); if (f > 0) { ctx.fillStyle = `rgba(0,0,0,${f})`; ctx.fillRect(0, 0, W, H); }
+}
+
+// ---------- HUD ----------
+function hudPill(text, t) {
+  ctx.save(); ctx.font = "800 36px M"; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  const w = ctx.measureText(text).width + 100;
+  ctx.fillStyle = "rgba(10,8,20,0.62)"; rr(ctx, 30, 150, w, 76, 38); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 2; rr(ctx, 30, 150, w, 76, 38); ctx.stroke();
+  ctx.fillStyle = (t * 1.6) % 1 < 0.6 ? "#ff3b3b" : "rgba(255,59,59,0.3)"; ell(ctx, 70, 188, 11, 11, ctx.fillStyle);
+  ctx.fillStyle = "#e9e9f0"; ctx.fillText(text, 95, 190);
+  ctx.restore();
+}
+let lastVal = null, lastChange = -9;
+function hudCounter(label, value, t, col) {
+  if (value !== lastVal) { lastVal = value; lastChange = t; }
+  const pop = 1 + 0.25 * Math.max(0, 1 - (t - lastChange) / 0.2);
+  ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const x = W - 360, y = 140, w = 330, h = 170;
+  ctx.fillStyle = "rgba(12,10,20,0.75)"; rr(ctx, x, y, w, h, 14); ctx.fill();
+  ctx.strokeStyle = "#e0303a"; ctx.lineWidth = 5; rr(ctx, x, y, w, h, 14); ctx.stroke();
+  ctx.font = "800 26px M"; ctx.fillStyle = "#8d8fa0"; ctx.fillText(label, x + w / 2, y + 38);
+  ctx.save(); ctx.translate(x + w / 2, y + 108); ctx.scale(pop, pop);
+  ctx.font = "900 76px M"; ctx.fillStyle = col; ctx.fillText(value, 0, 0); ctx.restore();
+  ctx.restore();
+}
+
+// ---------- субтитры ----------
+const COLORS = { r: "#ff4d4d", y: "#ffd93b" };
+function strokeText(s, x, y, size, fill) {
+  ctx.font = `900 ${size}px M`;
+  ctx.lineJoin = "round"; ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+  ctx.strokeStyle = "#0c0a12"; ctx.lineWidth = size * 0.16; ctx.strokeText(s, x, y);
+  ctx.shadowColor = "transparent"; ctx.fillStyle = fill; ctx.fillText(s, x, y);
+}
+function subtitles(t) {
+  const ch = CHUNKS.find((c) => t >= c.show && t < c.hide);
+  if (!ch) return;
+  const pop = easeOut(clamp((t - ch.show) / 0.12));
+  if (ch.kind === "bubble") return bubble(ch, t, pop);
+  let size = 112;
+  ctx.font = `900 ${size}px M`;
+  const space = size * 0.28;
+  const widthOf = () => ch.words.reduce((a, w) => a + ctx.measureText(w.txt).width, 0) + space * (ch.words.length - 1);
+  while (widthOf() > 960 && size > 60) { size -= 4; ctx.font = `900 ${size}px M`; }
+  const total = widthOf();
+  ctx.save(); ctx.translate(W / 2, 1248); ctx.scale(0.86 + 0.14 * pop, 0.86 + 0.14 * pop); ctx.globalAlpha = pop;
+  ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  let x = -total / 2;
+  for (const w of ch.words) {
+    const spoken = t >= w.s;
+    const fill = !spoken ? "rgba(150,150,165,0.85)" : w.color && COLORS[w.color] ? COLORS[w.color] : "#ffffff";
+    strokeText(w.txt, x, 0, size, fill);
+    x += ctx.measureText(w.txt).width + space;
+  }
+  ctx.restore();
+}
+function bubble(ch, t, pop) {
+  let size = 88, ws, total, space, pad = 44;
+  for (;;) {
+    ctx.font = `900 ${size}px M`; space = size * 0.28;
+    ws = ch.words.map((w) => ctx.measureText(w.txt).width);
+    total = ws.reduce((a, b) => a + b, 0) + space * (ws.length - 1);
+    if (total + pad * 2 + 30 <= W - 220 || size <= 50) break;
+    size -= 4;
+  }
+  const bw = total + pad * 2 + 30, bh = 160, x0 = (W - bw) / 2 + 40, y0 = 1170;
+  ctx.save(); ctx.globalAlpha = pop;
+  ctx.translate(W / 2, y0 + bh / 2); ctx.scale(0.8 + 0.2 * pop, 0.8 + 0.2 * pop); ctx.translate(-W / 2, -(y0 + bh / 2));
+  ctx.fillStyle = "#0c0a12"; rr(ctx, x0 - 8, y0 - 8, bw + 16, bh + 16, 60); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x0 + 40, y0 + bh); ctx.lineTo(x0 - 10, y0 + bh + 70); ctx.lineTo(x0 + 110, y0 + bh); ctx.fill();
+  ctx.fillStyle = "#ffd93b"; rr(ctx, x0, y0, bw, bh, 54); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x0 + 48, y0 + bh - 4); ctx.lineTo(x0 + 2, y0 + bh + 54); ctx.lineTo(x0 + 104, y0 + bh - 4); ctx.fill();
+  // аватар отца
+  ctx.save(); ctx.beginPath(); ctx.arc(x0 - 30, y0 - 10, 62, 0, Math.PI * 2); ctx.fillStyle = "#f0d9b5"; ctx.fill(); ctx.clip();
+  person(ctx, x0 - 30, y0 + 260, 0.5, DAD, { mouth: "smile" }); ctx.restore();
+  ctx.strokeStyle = "#0c0a12"; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(x0 - 30, y0 - 10, 62, 0, Math.PI * 2); ctx.stroke();
+  ctx.textBaseline = "middle"; let x = x0 + pad + 15;
+  ch.words.forEach((w, i) => {
+    const spoken = t >= w.s;
+    if (w.color === "k") { ctx.fillStyle = "#0c0a12"; rr(ctx, x - 14, y0 + 26, ws[i] + 28, bh - 52, 18); ctx.fill(); ctx.fillStyle = spoken ? "#ffd93b" : "rgba(255,217,59,0.4)"; }
+    else ctx.fillStyle = spoken ? "#0c0a12" : "rgba(12,10,18,0.35)";
+    ctx.fillText(w.txt, x, y0 + bh / 2 + 4);
+    x += ws[i] + space;
+  });
+  ctx.restore();
+}
+
+// ---------- монтаж ----------
+const SCENES = [
+  [0, 5.3, sHook], [5.3, 14.5, sAirport], [14.5, 20.95, sFlight], [20.95, 23.2, sBreak],
+  [23.2, 25.71, sFall], [25.71, 32.36, sWake], [32.36, 37.56, sDad], [37.56, 44.93, sPath],
+  [44.93, 50.74, sRescue], [50.74, 99, sEnd],
+];
+function render(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  const sc = SCENES.find(([a, b]) => t >= a && t < b);
+  sc[2](t);
+  subtitles(t);
+}
+window.render = render;
+window.ready = document.fonts.load("900 100px M", "ЁЖ").then(() => document.fonts.load("800 40px M", "ЁЖ")).then(() => document.fonts.ready);
+</script>
+</body>
+</html>
