@@ -464,16 +464,20 @@ function shMap(t) {
   vignette(ctx, 0.6);
 }
 function shStream(t) {
+  // Общий план: Юлиана целиком идёт по ручью, вода по щиколотку.
   ctx.fillStyle = vgrad(ctx, 0, H, [[0, "#1f4a2a"], [1, "#163522"]]); ctx.fillRect(0, 0, W, H);
   blurred(8, (b) => b.drawImage(LEAVES, -200 - t * 30, -900));
-  rays(ctx, 700, -100, 0.2, 5, 1800, 0.2);
-  water(ctx, 1200, t, "#3f7c86", "#1f4a55");
-  const ph = t * 6;
-  ctx.save(); ctx.translate(W / 2, 1620); ctx.scale(2.6, 2.6); ctx.beginPath(); ctx.rect(-300, -260, 600, 300); ctx.clip();
-  personLit(ctx, 0, 0, 1, JUL, { walk: ph, oneShoe: true, cuts: true, bob: Math.abs(Math.sin(ph)) * -8 }, { dir: 1, ground: false });
-  ctx.restore();
-  ctx.fillStyle = "rgba(63,124,134,0.55)"; ctx.fillRect(0, 1560, W, H);
-  ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 5; for (let i = 0; i < 3; i++) { const q = (t * 2 + i / 3) % 1; ctx.globalAlpha = 1 - q; ctx.beginPath(); ctx.ellipse(W / 2, 1580, q * 260, q * 65, 0, 0, Math.PI * 2); ctx.stroke(); } ctx.globalAlpha = 1;
+  rays(ctx, 700, -100, 0.2, 5, 1800, 0.25);
+  ctx.fillStyle = "#2a3d22"; ctx.fillRect(0, 980, W, 120);
+  water(ctx, 1060, t, "#3f7c86", "#1f4a55");
+  const ph = t * 5.5, x = lerp(360, 720, inv(49.64, 51.70, t)), y = 1180;
+  personLit(ctx, x, y, 0.75, JUL, { walk: ph, oneShoe: true, cuts: true, look: 1, bob: Math.abs(Math.sin(ph)) * -6 }, { dir: 1, ground: false, light: "rgba(255,240,200,0.35)" });
+  // вода закрывает ступни
+  ctx.fillStyle = "rgba(63,124,134,0.75)"; ctx.fillRect(0, y - 22, W, 60);
+  ctx.strokeStyle = "rgba(255,255,255,0.45)"; ctx.lineWidth = 4;
+  for (let i = 0; i < 3; i++) { const q = (t * 1.6 + i / 3) % 1; ctx.globalAlpha = 1 - q; ctx.beginPath(); ctx.ellipse(x, y - 4, 40 + q * 200, 8 + q * 40, 0, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  ctx.globalAlpha = 0.9; ctx.drawImage(LEAVES, -700, 1250, 1300, 1100); ctx.drawImage(LEAVES, 650, 1300, 900, 900); ctx.globalAlpha = 1;
   vignette(ctx, 0.55);
 }
 function shDays(t) {

@@ -270,7 +270,7 @@ function subtitles(t) {
   const widthOf = () => ch.words.reduce((a, w) => a + ctx.measureText(w.txt).width, 0) + space * (ch.words.length - 1);
   while (widthOf() > 960 && size > 60) { size -= 4; ctx.font = `900 ${size}px M`; }
   const total = widthOf();
-  ctx.save(); ctx.translate(W / 2, 1248); ctx.scale(0.86 + 0.14 * pop, 0.86 + 0.14 * pop); ctx.globalAlpha = pop;
+  ctx.save(); ctx.translate(W / 2, subY(t, 1248)); ctx.scale(0.86 + 0.14 * pop, 0.86 + 0.14 * pop); ctx.globalAlpha = pop;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
   let x = -total / 2;
   for (const w of ch.words) {
@@ -290,7 +290,7 @@ function bubble(ch, t, pop) {
     if (total + pad * 2 + 30 <= W - 220 || size <= 50) break;
     size -= 4;
   }
-  const bw = total + pad * 2 + 30, bh = 160, x0 = (W - bw) / 2 + 40, y0 = 1170;
+  const bw = total + pad * 2 + 30, bh = 160, x0 = (W - bw) / 2 + 40, y0 = subY(t, 1170);
   ctx.save(); ctx.globalAlpha = pop;
   ctx.translate(W / 2, y0 + bh / 2); ctx.scale(0.8 + 0.2 * pop, 0.8 + 0.2 * pop); ctx.translate(-W / 2, -(y0 + bh / 2));
   ctx.fillStyle = "#0c0a12"; rr(ctx, x0 - 8, y0 - 8, bw + 16, bh + 16, 60); ctx.fill();
@@ -312,3 +312,6 @@ function bubble(ch, t, pop) {
   ctx.restore();
 }
 
+
+// Высота субтитров по умолчанию; в сцене урока отца текст опускается ниже, чтобы не закрывать Юлиану.
+function subY(t, def) { return t >= 42.65 && t < 45.89 ? def + 520 : def; }
