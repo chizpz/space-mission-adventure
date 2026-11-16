@@ -135,27 +135,29 @@ function drawStanding(c, o, t) {
   if (o.breath !== false) breath(c, t);
 }
 function drawSitting(c, o, t) {
-  const cold = o.cold || 0;
-  c.save(); c.translate(0, 120);
+  // сидит на земле, обхватив колени; земля (подошвы и сиденье) на y = 54
+  const cold = o.cold || 0, TY = 255;
+  c.save(); c.translate(0, TY);
   jacketPath(c); c.fillStyle = C_JACKET; c.fill();
   c.save(); jacketPath(c); c.clip(); c.strokeStyle = C_JACKET_SH; c.lineWidth = 5; for (let i = 0; i < 6; i++) { const y = -470 + i * 50; c.beginPath(); c.moveTo(-130, y); c.quadraticCurveTo(0, y + 12, 130, y); c.stroke(); } c.restore();
   drawHeadGear(c, o, t);
   if (o.breath !== false) breath(c, t);
   c.restore();
+  // сиденье: штаны лежат на земле
+  c.fillStyle = C_PANTS_SH; c.beginPath(); c.ellipse(0, 34, 150, 26, 0, 0, Math.PI * 2); c.fill();
   // голени, колени, ботинки
   for (const sx of [-1, 1]) {
-    rrc(c, sx < 0 ? -100 : 26, -150, 74, 160, 26); c.fillStyle = C_PANTS; c.fill();
-    c.fillStyle = C_PANTS; c.beginPath(); c.arc(sx * 62, -160, 52, 0, Math.PI * 2); c.fill();
-    c.save(); c.translate(sx < 0 ? -4 : 18, 0); rrc(c, sx < 0 ? -100 : 26 - 18 + 4, 0, 84, 50, 18); c.restore();
-    rrc(c, sx < 0 ? -106 : 22, 0, 86, 52, 18); c.fillStyle = C_BOOT; c.fill(); c.fillStyle = C_SOLE; c.fillRect(sx < 0 ? -108 : 20, 42, 90, 12);
+    rrc(c, sx < 0 ? -100 : 26, -140, 74, 150, 26); c.fillStyle = C_PANTS; c.fill();
+    c.fillStyle = C_PANTS; c.beginPath(); c.arc(sx * 62, -146, 50, 0, Math.PI * 2); c.fill();
+    rrc(c, sx < 0 ? -106 : 22, 2, 86, 50, 18); c.fillStyle = C_BOOT; c.fill(); c.fillStyle = C_SOLE; c.fillRect(sx < 0 ? -108 : 20, 42, 90, 12);
   }
   // руки обхватывают колени
-  for (const sx of [-1, 1]) { c.save(); c.translate(sx * 125, -330); c.rotate(sx * 0.9); rrc(c, -32, 0, 64, 200, 30); c.fillStyle = C_JACKET; c.fill(); c.restore(); }
-  c.fillStyle = C_GLOVE; c.beginPath(); c.ellipse(-26, -190, 34, 30, 0, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(26, -184, 34, 30, 0, 0, Math.PI * 2); c.fill();
+  for (const sx of [-1, 1]) { c.save(); c.translate(sx * 118, -232); c.rotate(sx * 0.75); rrc(c, -30, 0, 60, 150, 28); c.fillStyle = C_JACKET; c.fill(); c.restore(); }
+  c.fillStyle = C_GLOVE; c.beginPath(); c.ellipse(-24, -128, 34, 28, 0, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(24, -122, 34, 28, 0, 0, Math.PI * 2); c.fill();
   if (cold) {
-    iceOver(c, cold * 3, () => { c.beginPath(); c.ellipse(0, -188, 64, 34, 0, 0, Math.PI * 2); });
-    for (const sx of [-1, 1]) iceOver(c, cold * 3, () => rrc(c, sx < 0 ? -106 : 22, 0, 86, 52, 18));
-    iceOver(c, cold * 1.6 - 0.6, () => { c.save(); c.translate(0, 120); headPath(c); c.restore(); });
+    iceOver(c, cold * 3, () => { c.beginPath(); c.ellipse(0, -125, 62, 32, 0, 0, Math.PI * 2); });
+    for (const sx of [-1, 1]) iceOver(c, cold * 3, () => rrc(c, sx < 0 ? -106 : 22, 2, 86, 50, 18));
+    iceOver(c, cold * 1.6 - 0.6, () => { c.save(); c.translate(0, TY); headPath(c); c.restore(); });
   }
 }
 function lightHero(x, y, s, o, drawFn) {

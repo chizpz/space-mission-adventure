@@ -245,7 +245,7 @@ function snowSection(x0, y0, w, branches, t, legendK = 1) {
   ctx.fillStyle = "#cfdcf0"; rr(x0, y0, w, 220, 16); ctx.fill();
   ctx.fillStyle = "#b9c9e0"; for (let i = 0; i < 12; i++) ctx.fillRect(x0 + 20 + i * (w - 40) / 12, y0 + 40 + (i % 3) * 50, 30, 6);
   if (branches > 0) { ctx.save(); ctx.globalAlpha = branches; ctx.strokeStyle = "#2f6a3a"; ctx.lineWidth = 8; ctx.lineCap = "round"; for (let i = 0; i < 9; i++) { const bx = x0 + w / 2 - 170 + i * 42; ctx.beginPath(); ctx.moveTo(bx, y0 - 6); ctx.lineTo(bx + 36, y0 - 26); ctx.stroke(); ctx.beginPath(); ctx.moveTo(bx + 10, y0 - 22); ctx.lineTo(bx + 46, y0 - 8); ctx.stroke(); } ctx.restore(); }
-  winterSit(x0 + w / 2, y0 - 8 - (branches > 0.5 ? 22 : 0), 0.5, { t, breath: false });
+  winterSit(x0 + w / 2, y0 - (branches > 0.5 ? 20 : 2) - 54 * 0.5, 0.5, { t, breath: false });
   // потоки тепла вниз
   const n = branches > 0.5 ? 2 : 6;
   for (let i = 0; i < n; i++) { const q = (t * 1.2 + i / n) % 1, x = x0 + w / 2 - 80 + i * (160 / Math.max(1, n - 1)); arrow(x, y0 + 10 + q * 40, x, y0 + 60 + q * 100, `rgb(${WARM})`, 6, (1 - q) * 0.9 * legendK); }
@@ -315,7 +315,7 @@ function scNight(t) {
   const r = rng(8); for (let i = 0; i < 9; i++) spruce(80 + i * 120 + r() * 40, 1080, 1.1, "#0a141b", "rgba(170,190,220,0.3)");
   ctx.fillStyle = "rgba(160,180,215,0.25)"; ctx.fillRect(0, 1080, W, 160);
   ctx.strokeStyle = "#2f6a3a"; ctx.lineWidth = 7; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(380 + i * 40, 1110); ctx.lineTo(410 + i * 40, 1094); ctx.stroke(); }
-  winterSit(470, 1100, 0.62, { cold: inv(52.4, 57, t), t, eyes: "tired", light: "cold", worried: true });
+  winterSit(470, 1106 - 54 * 0.62, 0.62, { cold: inv(52.4, 57, t), t, eyes: "tired", light: "cold", worried: true });
   snowfall(t, 80, 0.5, 90);
   if (t > 55.95) {
     const k = easeOut(inv(55.95, 56.3, t)); ctx.save(); ctx.globalAlpha = k; panelBox(640, 560, 340, 420);
