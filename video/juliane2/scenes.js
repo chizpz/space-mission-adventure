@@ -647,7 +647,7 @@ function shFinal(t) {
     ctx.fillStyle = `rgba(0,0,0,${0.55 * k})`; ctx.fillRect(0, 0, W, H);
     ctx.save(); ctx.globalAlpha = k; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     strokeText("ЮЛИАНА КЁПКЕ", W / 2, 1180, 92, "#ffffff");
-    ctx.font = "800 44px M"; ctx.fillStyle = "#c9cbd6"; ctx.fillText("ЕДИНСТВЕННАЯ ВЫЖИВШАЯ", W / 2, 1290); ctx.fillText("РЕЙСА LANSA 508", W / 2, 1350);
+    ctx.font = "800 44px M"; ctx.fillStyle = "#c9cbd6"; ctx.fillText("ЕДИНСТВЕННАЯ ВЫЖИВШАЯ", W / 2, 1290); ctx.fillText("РЕЙСА 508 АВИАКОМПАНИИ LANSA", W / 2, 1350);
     ctx.restore();
   }
   fadeBlack(inv(85.9, 86.6, t));
@@ -668,10 +668,23 @@ const SHOTS = [
   [81.69, 99, shFinal],
 ];
 
+// Пояснение: что такое LANSA. Карточка в стиле «ПРАВИЛО №», появляется вместе с первым упоминанием.
+function airlineChip(t) {
+  const k = easeOut(inv(17.55, 17.85, t)), out = 1 - inv(20.6, 20.93, t);
+  const a = k * out; if (a <= 0) return;
+  const w = 900, h = 190, x = (W - w) / 2, y = 290 + (1 - k) * 30;
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = "rgba(14,12,24,0.88)"; rr(ctx, x, y, w, h, 26); ctx.fill();
+  ctx.strokeStyle = "#ffd93b"; ctx.lineWidth = 6; rr(ctx, x, y, w, h, 26); ctx.stroke();
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.font = "800 34px M"; ctx.fillStyle = "#ffd93b"; ctx.fillText("АВИАКОМПАНИЯ", W / 2, y + 52);
+  ctx.font = "900 64px M"; ctx.fillStyle = "#ffffff"; ctx.fillText("LANSA · ПЕРУ", W / 2, y + 122);
+  ctx.restore();
+}
 function hud(t) {
   if (t < 6.37) { hudPill("ПЕРУ · 24.12.1971", t); hudCounter("ВЫСОТА", `${ALT(t)} м`, t, "#ff4d4d"); return; }
   if (t < 11.74) return;
-  if (t < 31.83) { hudPill(t < 20.93 ? "ЛИМА · 24.12.1971" : "LANSA 508", t); return; }
+  if (t < 31.83) { hudPill(t < 20.93 ? "ЛИМА · 24.12.1971" : "АВИАКОМПАНИЯ LANSA · РЕЙС 508", t); if (t >= 17.55 && t < 20.93) airlineChip(t); return; }
   if (t < 78.13) {
     const flash = t >= 40.85 && t < 45.89;
     hudPill(flash ? "ВОСПОМИНАНИЕ" : "ПЕРУ · СЕЛЬВА", t);
